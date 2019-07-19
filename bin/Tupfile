@@ -4,4 +4,4 @@
 
 .gitignore
 include_rules
-: ../obj/*.obj | ../obj/*.pdb |> cl -Zi -MD %f -Fd%O.pdb -Fe%o -link -manifestinput:../src/compatibility.manifest -manifest:embed |> $(BIN_NAME).exe | %O.pdb %O.ilk
+: ../obj/*.obj | ../obj/*.pdb |> cl -Zi -MD %f -FS -Fd%O.pdb -Fe%o -link -manifestinput:../src/compatibility.manifest -manifest:embed |> $(BIN_NAME).exe | %O.pdb %O.ilk
