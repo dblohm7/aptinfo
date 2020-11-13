@@ -3,4 +3,5 @@
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 .gitignore
-: foreach ../src/*.cpp |> cl -Zi -EHsc -MD -D_WIN32_WINNT=0x0A00 -DUNICODE -D_UNICODE -DWIN32_LEAN_AND_MEAN -I../include -c %f -Fd%B.pdb -Fo%o |> %B.obj | %B.pdb
+include_rules
+: foreach ../src/*.cpp |> cl -Zi -EHsc -MD -D_WIN32_WINNT=0x0A00 -DUNICODE -D_UNICODE -DWIN32_LEAN_AND_MEAN -DCHECK_CLSID=$(CHECK_CLSID) -I../include -c %f -Fd%B.pdb -Fo%o |> %B.obj | %B.pdb
