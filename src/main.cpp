@@ -10,6 +10,8 @@
 #pragma comment(lib, "advapi32.lib")
 #pragma comment(lib, "ole32.lib")
 
+// TODO ASK: If there's an AppID, try both inproc and local
+
 template <typename T, size_t N>
 static inline constexpr size_t ArrayLength(T (&aArr)[N]) {
   return N;
