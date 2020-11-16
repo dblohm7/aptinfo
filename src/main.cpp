@@ -1,3 +1,4 @@
+#include <optional>
 #include <string>
 #include <variant>
 
@@ -36,16 +37,17 @@ static const CLSID CLSID_FreeThreadedMarshaler = {0x0000033A,
 
 static wchar_t gStrClsid[kGuidLenWithBracesInclNul];
 static wchar_t gStrIid[kGuidLenWithBracesInclNul];
-static CLSID gClsid;
-static IID gIid;
-static bool gHasIid = false;
+static const wchar_t* gProgID;
+static std::optional<CLSID> gClsid;
+static std::optional<IID> gIid;
+static bool gVerbose;
 
 static void Usage(const wchar_t* aArgv0, const wchar_t* aMsg = nullptr) {
   if (aMsg) {
     fwprintf_s(stderr, L"Error: %s\n\n", aMsg);
   }
 
-  fwprintf_s(stderr, L"Usage: %s <ProgID or CLSID> [IID]\n\n", aArgv0);
+  fwprintf_s(stderr, L"Usage: %s [-v] <ProgID or CLSID> [IID]\n\n", aArgv0);
   fwprintf_s(stderr,
              L"    CLSID and IID must be specified in registry format,\n    "
              L"including dashes and curly braces\n");
@@ -57,57 +59,66 @@ static bool ParseArgv(const int argc, wchar_t* argv[]) {
     return false;
   }
 
-  // First, get the CLSID.
-  if (argv[1][0] == L'{' && wcslen(argv[1]) == kGuidLenWithBracesExclNul) {
-    // Assume it's a guid.
-    if (wcscpy_s(gStrClsid, argv[1])) {
-      return false;
-    }
+  for (size_t i = 1; i < argc; ++i) {
+    if (argv[i][0] == L'-' || argv[i][0] == L'/') {
+      if (argv[i][1] == L'v') {
+        gVerbose = true;
+      }
+    } else if (argv[i][0] == '{' &&
+               wcslen(argv[i]) == kGuidLenWithBracesExclNul) {
+      GUID guid;
 
-    if (FAILED(::CLSIDFromString(gStrClsid, &gClsid))) {
-      Usage(argv[0], L"Failed to parse CLSID");
-      return false;
-    }
-  } else {
-    // Assume it's a ProgID
-    if (FAILED(::CLSIDFromProgID(argv[1], &gClsid))) {
-      Usage(argv[0], L"Invalid ProgID");
-      return false;
-    }
+      if (!gClsid.has_value()) {
+        if (FAILED(::CLSIDFromString(argv[i], &guid))) {
+          Usage(argv[i], L"Failed to parse CLSID");
+          return false;
+        }
 
-    wprintf_s(L"Found ProgID \"%s\"\n", argv[1]);
+        wcscpy_s(gStrClsid, argv[i]);
+        gClsid.emplace(guid);
+      } else {
+        if (FAILED(::IIDFromString(argv[i], &guid))) {
+          Usage(argv[i], L"Failed to parse IID");
+          return false;
+        }
 
-    if (!::StringFromGUID2(gClsid, gStrClsid, ArrayLength(gStrClsid))) {
-      return false;
+        wcscpy_s(gStrIid, argv[i]);
+        gIid.emplace(guid);
+      }
+    } else if (!gClsid.has_value()) {
+      // ProgID?
+      GUID guid;
+
+      if (FAILED(::CLSIDFromProgID(argv[i], &guid))) {
+        Usage(argv[0], L"Invalid ProgID");
+        return false;
+      }
+
+      gClsid.emplace(guid);
+
+      if (!::StringFromGUID2(guid, gStrClsid, ArrayLength(gStrClsid))) {
+        return false;
+      }
+
+      gProgID = argv[i];
     }
   }
 
-  wprintf_s(L"Using CLSID %s\n", gStrClsid);
-
-  if (argc == 2) {
-    // No optional IID provided, continue
-    return true;
-  }
-
-  // IID sanity checks
-  if (wcslen(argv[2]) != kGuidLenWithBracesExclNul || argv[2][0] != L'{') {
-    Usage(argv[0], L"Invalid IID");
+  if (!gClsid) {
     return false;
   }
 
-  // Assume it's a guid.
-  if (wcscpy_s(gStrIid, argv[2])) {
-    return false;
+  if (gVerbose) {
+    wprintf_s(L"Using CLSID %s\n", gStrClsid);
+    if (gProgID) {
+      wprintf_s(L"Obtained from ProgID \"%s\"\n", gProgID);
+    }
+
+    if (gIid) {
+      wprintf_s(L"Using IID %s\n", gStrIid);
+    }
   }
 
-  if (FAILED(::IIDFromString(gStrIid, &gIid))) {
-    Usage(argv[0], L"Failed to parse IID");
-    return false;
-  }
-
-  wprintf_s(L"Using IID %s\n", gStrIid);
-
-  gHasIid = true;
   return true;
 }
 
@@ -126,7 +137,7 @@ enum class ThreadingModel {
 enum class Provenance {
   Registry,
   FreeThreadedMarshaler,
-  Manifest, // <-- unsupported by us (no public API), but still possible
+  Manifest,  // <-- unsupported by us (no public API), but still possible
   AgileObject,
 };
 
@@ -150,8 +161,8 @@ class ComClassThreadInfo {
 
   std::wstring GetDescription(const ClassType aClassType);
 
-  ComClassThreadInfo CheckObjectCapabilities(REFCLSID,
-                                             const IID* aIid = nullptr) const;
+  ComClassThreadInfo CheckObjectCapabilities(
+      REFCLSID, const std::optional<IID>& aOptIid) const;
 
  private:
   static const wchar_t* GetThreadingModelDescription(
@@ -282,7 +293,7 @@ class Apartment {
 };
 
 ComClassThreadInfo ComClassThreadInfo::CheckObjectCapabilities(
-    REFCLSID aClsid, const IID* aIid) const {
+    REFCLSID aClsid, const std::optional<IID>& aOptIid) const {
   if (mThreadingModel7 == ThreadingModel::Neutral) {
     // We're already neutral, these additional checks are unnecessary.
     return *this;
@@ -298,6 +309,10 @@ ComClassThreadInfo ComClassThreadInfo::CheckObjectCapabilities(
     return *this;
   }
 
+  if (gVerbose) {
+    wprintf_s(L"Creating object...\n");
+  }
+
   IUnknownPtr punk;
   HRESULT hr =
       ::CoCreateInstance(aClsid, nullptr, CLSCTX_INPROC_SERVER, IID_IUnknown,
@@ -306,54 +321,72 @@ ComClassThreadInfo ComClassThreadInfo::CheckObjectCapabilities(
     return *this;
   }
 
-  wprintf_s(L"Querying for IAgileObject...");
+  if (gVerbose) {
+    wprintf_s(L"Querying for IAgileObject...");
+  }
+
   IUnknownPtr agile;
   hr = punk->QueryInterface(IID_IAgileObject, reinterpret_cast<void**>(&agile));
   if (SUCCEEDED(hr)) {
-    wprintf_s(L" found.\n");
+    if (gVerbose) {
+      wprintf_s(L" found.\n");
+    }
+
     thdModel8 = ThreadingModel::Neutral;
     prov8 = Provenance::AgileObject;
-  } else {
+  } else if (gVerbose) {
     wprintf_s(L" not found.\n");
   }
 
-  if (!aIid) {
+  if (!aOptIid.has_value()) {
     wprintf_s(L"WARNING: IID required to query for free-threaded marshaler.\n");
     wprintf_s(L"         Results might be incomplete!\n");
     // We need an IID to do any further checks
     return ComClassThreadInfo{thdModel7, prov7, thdModel8, prov8};
   }
 
-  wprintf_s(L"Querying for IMarshal...");
+  if (gVerbose) {
+    wprintf_s(L"Querying for IMarshal...");
+  }
 
   // Check for the free-threaded marshaler
   IMarshalPtr marshal;
   hr = punk->QueryInterface(IID_IMarshal, reinterpret_cast<void**>(&marshal));
   if (FAILED(hr)) {
-    wprintf_s(L" not found.\n");
+    if (gVerbose) {
+      wprintf_s(L" not found.\n");
+    }
+
     return ComClassThreadInfo{thdModel7, prov7, thdModel8, prov8};
+  } else if (gVerbose) {
+    wprintf_s(
+        L" found.\nChecking whether object uses the free-threaded "
+        L"marshaler...");
   }
 
-  wprintf_s(
-      L" found.\nChecking whether object uses the free-threaded marshaler...");
-
   CLSID unmarshalClass;
-  hr = marshal->GetUnmarshalClass(*aIid, nullptr, MSHCTX_INPROC, nullptr,
-                                  MSHLFLAGS_NORMAL, &unmarshalClass);
+  hr = marshal->GetUnmarshalClass(aOptIid.value(), nullptr, MSHCTX_INPROC,
+                                  nullptr, MSHLFLAGS_NORMAL, &unmarshalClass);
   if (FAILED(hr)) {
-    wprintf_s(L" failed.\n");
+    if (gVerbose) {
+      wprintf_s(L" failed.\n");
+    }
+
     return ComClassThreadInfo{thdModel7, prov7, thdModel8, prov8};
   }
 
   if (unmarshalClass == CLSID_FreeThreadedMarshaler) {
-    wprintf_s(L" yes.\n");
+    if (gVerbose) {
+      wprintf_s(L" yes.\n");
+    }
+
     thdModel7 = ThreadingModel::Neutral;
     prov7 = Provenance::FreeThreadedMarshaler;
     if (thdModel8 != ThreadingModel::Neutral) {
       thdModel8 = ThreadingModel::Neutral;
       prov8 = Provenance::FreeThreadedMarshaler;
     }
-  } else {
+  } else if (gVerbose) {
     wprintf_s(L" no.\n");
   }
 
@@ -368,23 +401,26 @@ int wmain(int argc, wchar_t* argv[]) {
   std::variant<ComClassThreadInfo, LSTATUS> inprocModel =
       GetClassThreadingModel(gStrClsid);
   if (std::holds_alternative<ComClassThreadInfo>(inprocModel)) {
-    std::wstring output =
-        std::get<ComClassThreadInfo>(inprocModel)
-            .CheckObjectCapabilities(gClsid, gHasIid ? &gIid : nullptr)
-            .GetDescription(ClassType::Server);
+    std::wstring output = std::get<ComClassThreadInfo>(inprocModel)
+                              .CheckObjectCapabilities(gClsid.value(), gIid)
+                              .GetDescription(ClassType::Server);
     wprintf_s(L"%s", output.c_str());
     return 0;
   }
 
   LSTATUS result = std::get<LSTATUS>(inprocModel);
   if (result == ERROR_FILE_NOT_FOUND) {
-    wprintf_s(L"Class is not a registered in-process server.\n");
+    if (gVerbose) {
+      wprintf_s(L"Class is not a registered in-process server.\n");
+    }
   } else {
     fwprintf_s(stderr, L"InprocServer32 query failed with code %ld.\n", result);
     return 1;
   }
 
-  wprintf_s(L"Attempting to resolve as a local server...\n");
+  if (gVerbose) {
+    wprintf_s(L"Attempting to resolve as a local server...\n");
+  }
 
   std::wstring subKeyLocalServer(L"CLSID\\");
   subKeyLocalServer += gStrClsid;
@@ -403,11 +439,14 @@ int wmain(int argc, wchar_t* argv[]) {
 
   ::RegCloseKey(regKeyLocalServer);
 
-  wprintf_s(
-      L"CLSID is a local server. Its threading model will be determined by\n");
-  wprintf_s(L"    the threading model of its proxy/stub class.\n");
+  if (gVerbose) {
+    wprintf_s(
+        L"CLSID is a local server. Its threading model will be determined "
+        L"by\n");
+    wprintf_s(L"    the threading model of its proxy/stub class.\n");
+  }
 
-  if (!gHasIid) {
+  if (!gIid.has_value()) {
     fwprintf_s(stderr, L"An IID must be provided to proceed any further.\n");
     return 1;
   }
@@ -439,10 +478,9 @@ int wmain(int argc, wchar_t* argv[]) {
     return 1;
   }
 
-  std::wstring output =
-      std::get<ComClassThreadInfo>(proxyModel)
-          .CheckObjectCapabilities(proxyStubClsid, gHasIid ? &gIid : nullptr)
-          .GetDescription(ClassType::Proxy);
+  std::wstring output = std::get<ComClassThreadInfo>(proxyModel)
+                            .CheckObjectCapabilities(proxyStubClsid, gIid)
+                            .GetDescription(ClassType::Proxy);
   wprintf_s(L"%s", output.c_str());
   return 0;
 }
