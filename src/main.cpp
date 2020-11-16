@@ -2,16 +2,14 @@
 #include <string>
 #include <variant>
 
-#include <stdio.h>
 #include <comdef.h>
+#include <stdio.h>
 
-#include <windows.h>
 #include <objbase.h>
+#include <windows.h>
 
 #pragma comment(lib, "advapi32.lib")
 #pragma comment(lib, "ole32.lib")
-
-// TODO ASK: If there's an AppID, try both inproc and local
 
 template <typename T, size_t N>
 static inline constexpr size_t ArrayLength(T (&aArr)[N]) {
@@ -20,7 +18,7 @@ static inline constexpr size_t ArrayLength(T (&aArr)[N]) {
 
 static constexpr int kGuidLenWithBracesInclNul = 39;
 static constexpr int kGuidLenWithBracesExclNul = kGuidLenWithBracesInclNul - 1;
-static constexpr size_t kThreadingModelBufChars = ArrayLength(L"Apartment");
+static constexpr size_t kThreadingModelBufCharLen = ArrayLength(L"Apartment");
 static const CLSID CLSID_FreeThreadedMarshaler = {0x0000033A,
                                                   0x0000,
                                                   0x0000,
@@ -37,23 +35,32 @@ static const CLSID CLSID_FreeThreadedMarshaler = {0x0000033A,
 
 static wchar_t gStrClsid[kGuidLenWithBracesInclNul];
 static wchar_t gStrIid[kGuidLenWithBracesInclNul];
-static const wchar_t* gProgID;
+static const wchar_t *gProgID;
 static std::optional<CLSID> gClsid;
 static std::optional<IID> gIid;
+static bool gDescriptive;
 static bool gVerbose;
 
-static void Usage(const wchar_t* aArgv0, const wchar_t* aMsg = nullptr) {
+static void Usage(const wchar_t *aArgv0, const wchar_t *aMsg = nullptr) {
   if (aMsg) {
     fwprintf_s(stderr, L"Error: %s\n\n", aMsg);
   }
 
-  fwprintf_s(stderr, L"Usage: %s [-v] <ProgID or CLSID> [IID]\n\n", aArgv0);
+  fwprintf_s(stderr, L"Usage: %s [-d] [-v] <ProgID or CLSID> [IID]\n\n",
+             aArgv0);
+  fwprintf_s(stderr, L"Where:\n\n");
   fwprintf_s(stderr,
-             L"    CLSID and IID must be specified in registry format,\n    "
-             L"including dashes and curly braces\n");
+             L"\t-d\tDescriptive mode: include additional descriptive text in "
+             L"output\n");
+  fwprintf_s(stderr, L"\t-v\tVerbose mode\n");
+  fwprintf_s(stderr,
+             L"\n\tIID is optional, but omitting it may result in incomplete "
+             L"output.\n");
+  fwprintf_s(stderr, L"\n\tCLSID and IID must be specified in registry "
+                     L"format,\n\tincluding dashes and curly braces\n");
 }
 
-static bool ParseArgv(const int argc, wchar_t* argv[]) {
+static bool ParseArgv(const int argc, wchar_t *argv[]) {
   if (argc < 2) {
     Usage(argv[0]);
     return false;
@@ -61,10 +68,13 @@ static bool ParseArgv(const int argc, wchar_t* argv[]) {
 
   for (size_t i = 1; i < argc; ++i) {
     if (argv[i][0] == L'-' || argv[i][0] == L'/') {
-      if (argv[i][1] == L'v') {
+      if (argv[i][1] == L'd') {
+        gDescriptive = true;
+      } else if (argv[i][1] == L'v') {
+        gDescriptive = true;
         gVerbose = true;
       }
-    } else if (argv[i][0] == '{' &&
+    } else if (argv[i][0] == L'{' &&
                wcslen(argv[i]) == kGuidLenWithBracesExclNul) {
       GUID guid;
 
@@ -137,108 +147,185 @@ enum class ThreadingModel {
 enum class Provenance {
   Registry,
   FreeThreadedMarshaler,
-  Manifest,  // <-- unsupported by us (no public API), but still possible
+  Manifest, // <-- unsupported by us (no public API), but still possible
   AgileObject,
 };
 
 class ComClassThreadInfo {
- public:
+public:
   constexpr ComClassThreadInfo(const ThreadingModel aThdModel,
                                const Provenance aProvenance)
-      : mThreadingModel7(aThdModel),
-        mProvenance7(aProvenance),
-        mThreadingModel8(aThdModel),
-        mProvenance8(aProvenance) {}
+      : mThreadingModel7(aThdModel), mProvenance7(aProvenance),
+        mThreadingModel8(aThdModel), mProvenance8(aProvenance) {}
 
   constexpr ComClassThreadInfo(const ThreadingModel aThdModel7,
                                const Provenance aProvenance7,
                                const ThreadingModel aThdModel8,
                                const Provenance aProvenance8)
-      : mThreadingModel7(aThdModel7),
-        mProvenance7(aProvenance7),
-        mThreadingModel8(aThdModel8),
-        mProvenance8(aProvenance8) {}
+      : mThreadingModel7(aThdModel7), mProvenance7(aProvenance7),
+        mThreadingModel8(aThdModel8), mProvenance8(aProvenance8) {}
 
   std::wstring GetDescription(const ClassType aClassType);
 
-  ComClassThreadInfo CheckObjectCapabilities(
-      REFCLSID, const std::optional<IID>& aOptIid) const;
+  ComClassThreadInfo
+  CheckObjectCapabilities(REFCLSID, const std::optional<IID> &aOptIid) const;
 
- private:
-  static const wchar_t* GetThreadingModelDescription(
-      const ThreadingModel aThdModel);
-  static const wchar_t* GetProvenanceDescription(const Provenance aProvenance);
+private:
+  static std::wstring
+  GetThreadingModelDescription(const ThreadingModel aThdModel);
+  static const wchar_t *GetProvenanceDescription(const Provenance aProvenance);
 
- private:
+private:
   const ThreadingModel mThreadingModel7;
   const Provenance mProvenance7;
   const ThreadingModel mThreadingModel8;
   const Provenance mProvenance8;
 };
 
-const wchar_t* ComClassThreadInfo::GetThreadingModelDescription(
+std::wstring ComClassThreadInfo::GetThreadingModelDescription(
     const ThreadingModel aThdModel) {
+  std::wstring result;
+
   switch (aThdModel) {
-    case ThreadingModel::STA:
-      return L"single-threaded:\nProxying is required to access from any other "
-             L"apartment.\n";
-    case ThreadingModel::MTA:
-      return L"multi-threaded:\nProxying is required to access from any "
-             L"single-threaded apartment.\n";
-    case ThreadingModel::Both:
-      return L"either single-threaded or multi-threaded,\n    but are "
-             L"mutually-exclusive.\n";
-    case ThreadingModel::Neutral:
-      return L"thread-neutral:\nThis class may be invoked by any thread within "
-             L"any apartment.\n";
-    default:
-      return nullptr;
+  case ThreadingModel::STA:
+    result = L"Single-threaded";
+    if (gDescriptive) {
+      result += L":\n\tProxying is required to access from any other apartment";
+    }
+    break;
+  case ThreadingModel::MTA:
+    result = L"Multi-threaded";
+    if (gDescriptive) {
+      result += L":\n\tProxying is required to access from any single-threaded "
+                L"apartment";
+    }
+
+    break;
+  case ThreadingModel::Both:
+    result = L"Both";
+    if (gDescriptive) {
+      result += L":\n\tEither single-threaded or multi-threaded, but "
+                L"mutually-exclusive";
+    }
+
+    break;
+  case ThreadingModel::Neutral:
+    result = L"Thread-neutral";
+    if (gDescriptive) {
+      result +=
+          L":\n\tThis object may be invoked by any thread residing in any "
+          L"apartment";
+    }
+
+    break;
+  default:
+    return result;
   };
+
+  result += L".\n";
+  return result;
 }
 
-const wchar_t* ComClassThreadInfo::GetProvenanceDescription(
-    const Provenance aProvenance) {
+const wchar_t *
+ComClassThreadInfo::GetProvenanceDescription(const Provenance aProvenance) {
   switch (aProvenance) {
-    case Provenance::Registry:
-      return L"The object's threading model was determined via the system "
-             L"registry.\n";
-    case Provenance::FreeThreadedMarshaler:
-      return L"The object aggregates the free-threaded marshaler.\n";
-    case Provenance::Manifest:
-      return L"The object's threading model was determined via a manifest.\n";
-    case Provenance::AgileObject:
-      return L"The object supports the IAgileObject interface.\n";
-    default:
-      return nullptr;
+  case Provenance::Registry:
+    return L"System registry.\n";
+  case Provenance::FreeThreadedMarshaler:
+    return L"Free-threaded marshaler.\n";
+  case Provenance::Manifest:
+    return L"Manifest.\n";
+  case Provenance::AgileObject:
+    return L"IAgileObject.\n";
+  default:
+    return nullptr;
   }
 }
 
 std::wstring ComClassThreadInfo::GetDescription(const ClassType aClassType) {
   std::wstring result(aClassType == ClassType::Server ? L"Server " : L"Proxy ");
   if (mThreadingModel7 == mThreadingModel8) {
-    result += L"threading model is ";
+    result += L"threading model: ";
     result += GetThreadingModelDescription(mThreadingModel7);
+    result += L"Provenance: ";
     result += GetProvenanceDescription(mProvenance7);
     return result;
   }
 
   result += L"has different threading models depending on OS version.\n\n";
-  result += L"On Windows 7, the threading model is ";
+  result += L"On Windows 7 (if available), the threading model is ";
   result += GetThreadingModelDescription(mThreadingModel7);
+  result += L"Provenance: ";
   result += GetProvenanceDescription(mProvenance7);
   result += L"\n\nOn Windows 8 and newer, the threading model is ";
   result += GetThreadingModelDescription(mThreadingModel8);
+  result += L"Provenance: ";
   result += GetProvenanceDescription(mProvenance8);
   return result;
 }
 
-static std::variant<ComClassThreadInfo, LSTATUS> GetClassThreadingModel(
-    const wchar_t* aStrClsid) {
-  std::wstring subKeyInprocServer(L"CLSID\\");
-  subKeyInprocServer += aStrClsid;
+static bool HasDllSurrogate(const wchar_t *aStrClsid) {
+  if (gVerbose) {
+    wprintf_s(L"Checking for DLL surrogate... ");
+  }
+
+  std::wstring subKeyClsid(L"CLSID\\");
+  subKeyClsid += aStrClsid;
+
+  wchar_t appIdBuf[kGuidLenWithBracesInclNul] = {};
+  DWORD numBytes = sizeof(appIdBuf);
+  LSTATUS result =
+      ::RegGetValueW(HKEY_CLASSES_ROOT, subKeyClsid.c_str(), L"AppID",
+                     RRF_RT_REG_SZ, nullptr, appIdBuf, &numBytes);
+  if (result != ERROR_SUCCESS) {
+    if (gVerbose) {
+      wprintf_s(L"No AppID.\n");
+    }
+
+    return false;
+  }
+
+  std::wstring subKeyAppid(L"AppID\\");
+  subKeyAppid += appIdBuf;
+
+  wchar_t surrogate[MAX_PATH + 1] = {};
+  numBytes = sizeof(surrogate);
+  result =
+      ::RegGetValueW(HKEY_CLASSES_ROOT, subKeyAppid.c_str(), L"DllSurrogate",
+                     RRF_RT_REG_SZ, nullptr, surrogate, &numBytes);
+  if (result != ERROR_SUCCESS) {
+    if (gVerbose) {
+      wprintf_s(L"AppID does not have DllSurrogate value.\n");
+    }
+
+    return false;
+  }
+
+  if (gVerbose) {
+    std::wstring strSurrogate;
+    if (surrogate[0]) {
+      strSurrogate += L"\"";
+      strSurrogate += surrogate;
+      strSurrogate += L"\"";
+    } else {
+      strSurrogate = L"System default (dllhost.exe)";
+    }
+
+    wprintf_s(L"%s.\n", strSurrogate.c_str());
+  }
+
+  return true;
+}
+
+static std::variant<ComClassThreadInfo, LSTATUS>
+GetClassThreadingModel(const wchar_t *aStrClsid) {
+  std::wstring subKeyClsid(L"CLSID\\");
+  subKeyClsid += aStrClsid;
+
+  std::wstring subKeyInprocServer(subKeyClsid);
   subKeyInprocServer += L"\\InprocServer32";
 
-  wchar_t threadingModelBuf[kThreadingModelBufChars] = {};
+  wchar_t threadingModelBuf[kThreadingModelBufCharLen] = {};
   DWORD numBytes = sizeof(threadingModelBuf);
   LSTATUS result = ::RegGetValueW(HKEY_CLASSES_ROOT, subKeyInprocServer.c_str(),
                                   L"ThreadingModel", RRF_RT_REG_SZ, nullptr,
@@ -267,7 +354,7 @@ static std::variant<ComClassThreadInfo, LSTATUS> GetClassThreadingModel(
 }
 
 class Apartment {
- public:
+public:
   explicit Apartment(const ThreadingModel aThdModel)
       : mHr(::CoInitializeEx(nullptr, (aThdModel == ThreadingModel::STA)
                                           ? COINIT_APARTMENTTHREADED
@@ -282,18 +369,19 @@ class Apartment {
   }
 
   explicit operator bool() const { return SUCCEEDED(mHr); }
+  HRESULT GetHResult() const { return mHr; }
 
-  Apartment(const Apartment&) = delete;
-  Apartment(Apartment&&) = delete;
-  Apartment& operator=(const Apartment&) = delete;
-  Apartment& operator=(Apartment&&) = delete;
+  Apartment(const Apartment &) = delete;
+  Apartment(Apartment &&) = delete;
+  Apartment &operator=(const Apartment &) = delete;
+  Apartment &operator=(Apartment &&) = delete;
 
- private:
+private:
   const HRESULT mHr;
 };
 
 ComClassThreadInfo ComClassThreadInfo::CheckObjectCapabilities(
-    REFCLSID aClsid, const std::optional<IID>& aOptIid) const {
+    REFCLSID aClsid, const std::optional<IID> &aOptIid) const {
   if (mThreadingModel7 == ThreadingModel::Neutral) {
     // We're already neutral, these additional checks are unnecessary.
     return *this;
@@ -304,64 +392,90 @@ ComClassThreadInfo ComClassThreadInfo::CheckObjectCapabilities(
   ThreadingModel thdModel8 = mThreadingModel7;
   Provenance prov8 = mProvenance7;
 
+  if (gVerbose) {
+    wprintf_s(L"Entering apartment... ");
+  }
+
   Apartment apt(mThreadingModel7);
   if (!apt) {
+    if (gVerbose) {
+      wprintf_s(L"Failed with HRESULT 0x%08lX.\n", apt.GetHResult());
+    }
+
+    fwprintf_s(stderr, L"WARNING: Could not enter a test apartment. Results "
+                       L"might be incomplete!\n");
     return *this;
   }
 
   if (gVerbose) {
-    wprintf_s(L"Creating object...\n");
+    wprintf_s(L"OK.\nCreating object... ");
   }
 
   IUnknownPtr punk;
   HRESULT hr =
       ::CoCreateInstance(aClsid, nullptr, CLSCTX_INPROC_SERVER, IID_IUnknown,
-                         reinterpret_cast<void**>(&punk));
+                         reinterpret_cast<void **>(&punk));
   if (FAILED(hr)) {
+    if (gVerbose) {
+      wprintf_s(L"Failed with HRESULT 0x%08lX.\n", hr);
+    }
+
+    fwprintf_s(stderr, L"WARNING: Could not create a test instance. Results "
+                       L"might be incomplete!\n");
     return *this;
+  } else if (gVerbose) {
+    wprintf_s(L"OK.\n");
   }
 
   if (gVerbose) {
-    wprintf_s(L"Querying for IAgileObject...");
+    wprintf_s(L"Querying for IAgileObject... ");
   }
 
   IUnknownPtr agile;
-  hr = punk->QueryInterface(IID_IAgileObject, reinterpret_cast<void**>(&agile));
+  hr =
+      punk->QueryInterface(IID_IAgileObject, reinterpret_cast<void **>(&agile));
   if (SUCCEEDED(hr)) {
     if (gVerbose) {
-      wprintf_s(L" found.\n");
+      wprintf_s(L"Found.\n");
     }
 
     thdModel8 = ThreadingModel::Neutral;
     prov8 = Provenance::AgileObject;
   } else if (gVerbose) {
-    wprintf_s(L" not found.\n");
+    if (hr == E_NOINTERFACE) {
+      wprintf_s(L"Not found.\n");
+    } else {
+      wprintf_s(L"Failed with HRESULT 0x%08lX.\n", hr);
+    }
   }
 
+  // We need an IID to do any further checks
   if (!aOptIid.has_value()) {
-    wprintf_s(L"WARNING: IID required to query for free-threaded marshaler.\n");
-    wprintf_s(L"         Results might be incomplete!\n");
-    // We need an IID to do any further checks
+    fwprintf_s(stderr, L"WARNING: IID required to query for free-threaded "
+                       L"marshaler.\n\tResults might be incomplete!\n");
     return ComClassThreadInfo{thdModel7, prov7, thdModel8, prov8};
   }
 
   if (gVerbose) {
-    wprintf_s(L"Querying for IMarshal...");
+    wprintf_s(L"Querying for IMarshal... ");
   }
 
   // Check for the free-threaded marshaler
   IMarshalPtr marshal;
-  hr = punk->QueryInterface(IID_IMarshal, reinterpret_cast<void**>(&marshal));
+  hr = punk->QueryInterface(IID_IMarshal, reinterpret_cast<void **>(&marshal));
   if (FAILED(hr)) {
     if (gVerbose) {
-      wprintf_s(L" not found.\n");
+      if (hr == E_NOINTERFACE) {
+        wprintf_s(L"Not found.\n");
+      } else {
+        wprintf_s(L"Failed with HRESULT 0x%08lX.\n", hr);
+      }
     }
 
     return ComClassThreadInfo{thdModel7, prov7, thdModel8, prov8};
   } else if (gVerbose) {
-    wprintf_s(
-        L" found.\nChecking whether object uses the free-threaded "
-        L"marshaler...");
+    wprintf_s(L"Found.\nChecking whether object aggregates the free-threaded "
+              L"marshaler... ");
   }
 
   CLSID unmarshalClass;
@@ -369,7 +483,7 @@ ComClassThreadInfo ComClassThreadInfo::CheckObjectCapabilities(
                                   nullptr, MSHLFLAGS_NORMAL, &unmarshalClass);
   if (FAILED(hr)) {
     if (gVerbose) {
-      wprintf_s(L" failed.\n");
+      wprintf_s(L"Failed with HRESULT 0x%08lX.\n", hr);
     }
 
     return ComClassThreadInfo{thdModel7, prov7, thdModel8, prov8};
@@ -377,7 +491,7 @@ ComClassThreadInfo ComClassThreadInfo::CheckObjectCapabilities(
 
   if (unmarshalClass == CLSID_FreeThreadedMarshaler) {
     if (gVerbose) {
-      wprintf_s(L" yes.\n");
+      wprintf_s(L"Yes.\n");
     }
 
     thdModel7 = ThreadingModel::Neutral;
@@ -387,13 +501,47 @@ ComClassThreadInfo ComClassThreadInfo::CheckObjectCapabilities(
       prov8 = Provenance::FreeThreadedMarshaler;
     }
   } else if (gVerbose) {
-    wprintf_s(L" no.\n");
+    wprintf_s(L"No.\n");
   }
 
   return ComClassThreadInfo{thdModel7, prov7, thdModel8, prov8};
 }
 
-int wmain(int argc, wchar_t* argv[]) {
+static int CheckProxyForInterface(const wchar_t* aStrIid) {
+  std::wstring subKeyProxyStubClsid(L"Interface\\");
+  subKeyProxyStubClsid += aStrIid;
+  subKeyProxyStubClsid += L"\\ProxyStubClsid32";
+
+  wchar_t proxyStubClsidBuf[kGuidLenWithBracesInclNul] = {};
+  DWORD numBytes = sizeof(proxyStubClsidBuf);
+  LSTATUS result =
+      ::RegGetValueW(HKEY_CLASSES_ROOT, subKeyProxyStubClsid.c_str(), nullptr,
+                     RRF_RT_REG_SZ, nullptr, proxyStubClsidBuf, &numBytes);
+  if (result != ERROR_SUCCESS) {
+    fwprintf_s(stderr, L"Could not resolve IID's proxy/stub CLSID.\n");
+    return 1;
+  }
+
+  std::variant<ComClassThreadInfo, LSTATUS> proxyModel =
+      GetClassThreadingModel(proxyStubClsidBuf);
+  if (std::holds_alternative<LSTATUS>(proxyModel)) {
+    fwprintf_s(stderr, L"Could not resolve proxy/stub threading model.\n");
+    return 1;
+  }
+
+  CLSID proxyStubClsid;
+  if (FAILED(::CLSIDFromString(proxyStubClsidBuf, &proxyStubClsid))) {
+    fwprintf_s(stderr, L"Could not parse proxy/stub CLSID.\n");
+    return 1;
+  }
+
+  std::wstring output =
+      std::get<ComClassThreadInfo>(proxyModel).GetDescription(ClassType::Proxy);
+  wprintf_s(L"%s", output.c_str());
+  return 0;
+}
+
+int wmain(int argc, wchar_t *argv[]) {
   if (!ParseArgv(argc, argv)) {
     return 1;
   }
@@ -404,7 +552,27 @@ int wmain(int argc, wchar_t* argv[]) {
     std::wstring output = std::get<ComClassThreadInfo>(inprocModel)
                               .CheckObjectCapabilities(gClsid.value(), gIid)
                               .GetDescription(ClassType::Server);
-    wprintf_s(L"%s", output.c_str());
+    wprintf_s(L"When instantiating in-process (via CLSCTX_INPROC_SERVER):\n%s",
+              output.c_str());
+    if (!HasDllSurrogate(gStrClsid)) {
+      return 0;
+    }
+
+    wprintf_s(
+        L"\nThis class may optionally be instantiated out-of-process\n\t(via "
+        L"CLSCTX_LOCAL_SERVER):\n");
+    if (gVerbose) {
+      wprintf_s(L"In this case its threading model will be determined by the "
+                L"threading model of\n\tits proxy/stub class.\n");
+    }
+
+    if (gIid.has_value()) {
+      // Ignore return value since we already have some success
+      CheckProxyForInterface(gStrIid);
+      return 0;
+    }
+
+    fwprintf_s(stderr, L"An IID must be provided to proceed any further.\n");
     return 0;
   }
 
@@ -439,48 +607,18 @@ int wmain(int argc, wchar_t* argv[]) {
 
   ::RegCloseKey(regKeyLocalServer);
 
+  wprintf_s(L"When instantiating out-of-process (via CLSCTX_LOCAL_SERVER):\n");
+
   if (gVerbose) {
     wprintf_s(
-        L"CLSID is a local server. Its threading model will be determined "
-        L"by\n");
-    wprintf_s(L"    the threading model of its proxy/stub class.\n");
+        L"Its threading model will be determined by the threading model of\n\t"
+        L"its proxy/stub class.\n");
   }
 
   if (!gIid.has_value()) {
-    fwprintf_s(stderr, L"An IID must be provided to proceed any further.\n");
+    fwprintf_s(stderr, L"ERROR: An IID must be provided to proceed any further.\n");
     return 1;
   }
 
-  std::wstring subKeyProxyStubClsid(L"Interface\\");
-  subKeyProxyStubClsid += gStrIid;
-  subKeyProxyStubClsid += L"\\ProxyStubClsid32";
-
-  wchar_t proxyStubClsidBuf[kGuidLenWithBracesInclNul] = {};
-  DWORD numBytes = sizeof(proxyStubClsidBuf);
-  result =
-      ::RegGetValueW(HKEY_CLASSES_ROOT, subKeyProxyStubClsid.c_str(), nullptr,
-                     RRF_RT_REG_SZ, nullptr, proxyStubClsidBuf, &numBytes);
-  if (result != ERROR_SUCCESS) {
-    fwprintf_s(stderr, L"Could not resolve IID's proxy/stub CLSID.\n");
-    return 1;
-  }
-
-  std::variant<ComClassThreadInfo, LSTATUS> proxyModel =
-      GetClassThreadingModel(proxyStubClsidBuf);
-  if (std::holds_alternative<LSTATUS>(proxyModel)) {
-    fwprintf_s(stderr, L"Could not resolve proxy/stub threading model.\n");
-    return 1;
-  }
-
-  CLSID proxyStubClsid;
-  if (FAILED(::CLSIDFromString(proxyStubClsidBuf, &proxyStubClsid))) {
-    fwprintf_s(stderr, L"Could not parse proxy/stub CLSID.\n");
-    return 1;
-  }
-
-  std::wstring output = std::get<ComClassThreadInfo>(proxyModel)
-                            .CheckObjectCapabilities(proxyStubClsid, gIid)
-                            .GetDescription(ClassType::Proxy);
-  wprintf_s(L"%s", output.c_str());
-  return 0;
+  return CheckProxyForInterface(gStrIid);
 }
