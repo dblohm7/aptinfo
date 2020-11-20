@@ -1,1 +1,3 @@
 BIN_NAME = aptinfo
+IMPORT_LIBS =
+DELAYLOAD_DLLS =

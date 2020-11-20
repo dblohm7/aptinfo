@@ -66,7 +66,7 @@ static bool ParseArgv(const int argc, wchar_t *argv[]) {
     return false;
   }
 
-  for (size_t i = 1; i < argc; ++i) {
+  for (int i = 1; i < argc; ++i) {
     if (argv[i][0] == L'-' || argv[i][0] == L'/') {
       if (argv[i][1] == L'd') {
         gDescriptive = true;
@@ -106,7 +106,8 @@ static bool ParseArgv(const int argc, wchar_t *argv[]) {
 
       gClsid.emplace(guid);
 
-      if (!::StringFromGUID2(guid, gStrClsid, ArrayLength(gStrClsid))) {
+      if (!::StringFromGUID2(guid, gStrClsid,
+                             static_cast<int>(ArrayLength(gStrClsid)))) {
         return false;
       }
 
@@ -169,6 +170,11 @@ public:
 
   ComClassThreadInfo
   CheckObjectCapabilities(REFCLSID, const std::optional<IID> &aOptIid) const;
+
+  ComClassThreadInfo(const ComClassThreadInfo&) = default;
+  ComClassThreadInfo(ComClassThreadInfo&&) = default;
+  ComClassThreadInfo& operator=(const ComClassThreadInfo&) = delete;
+  ComClassThreadInfo& operator=(ComClassThreadInfo&&) = delete;
 
 private:
   static std::wstring
