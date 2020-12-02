@@ -3,4 +3,4 @@
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 .gitignore
-: foreach ../src/*.cpp |> cl -nologo -Zi -EHsc -MD -std:c++17 -experimental:external -external:env:INCLUDE -external:W0 -Wall -WX -wd4514 -wd4100 -wd4820 -wd4191 -wd5045 -D_WIN32_WINNT=0x0A00 -DNTDDI_VERSION=WDK_NTDDI_VERSION -DUNICODE -D_UNICODE -DWIN32_LEAN_AND_MEAN -I../include -c %f -Fd%B.pdb -Fo%o |> %B.obj | %B.pdb ^.*\.cache
+: foreach ../src/*.cpp |> cl -nologo -Zi -EHsc -MD -std:c++17 -experimental:external -external:env:INCLUDE -external:W0 -Wall -WX -wd4514 -wd4100 -wd4820 -wd4191 -wd5045 -D_WIN32_WINNT=0x0A00 -DNTDDI_VERSION=WDK_NTDDI_VERSION -DUNICODE -D_UNICODE -DWIN32_LEAN_AND_MEAN -I../include -c %f -FS -Fd%B.pdb -Fo%o |> %B.obj ^.*\.cache
