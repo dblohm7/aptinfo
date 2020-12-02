@@ -57,7 +57,8 @@ static void Usage(const wchar_t *aArgv0, const wchar_t *aMsg = nullptr) {
              L"\n\tIID is optional, but omitting it may result in incomplete "
              L"output.\n");
   fwprintf_s(stderr, L"\n\tCLSID and IID must be specified in registry "
-                     L"format,\n\tincluding dashes and curly braces\n");
+                     L"format,\n\tincluding dashes and curly braces.\n\t"
+                     L"For example: {XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX}\n");
 }
 
 static bool ParseArgv(const int argc, wchar_t *argv[]) {
@@ -80,7 +81,7 @@ static bool ParseArgv(const int argc, wchar_t *argv[]) {
 
       if (!gClsid.has_value()) {
         if (FAILED(::CLSIDFromString(argv[i], &guid))) {
-          Usage(argv[i], L"Failed to parse CLSID");
+          Usage(argv[0], L"Failed to parse CLSID");
           return false;
         }
 
@@ -88,7 +89,7 @@ static bool ParseArgv(const int argc, wchar_t *argv[]) {
         gClsid.emplace(guid);
       } else {
         if (FAILED(::IIDFromString(argv[i], &guid))) {
-          Usage(argv[i], L"Failed to parse IID");
+          Usage(argv[0], L"Failed to parse IID");
           return false;
         }
 
@@ -97,17 +98,18 @@ static bool ParseArgv(const int argc, wchar_t *argv[]) {
       }
     } else if (!gClsid.has_value()) {
       // ProgID?
-      GUID guid;
+      CLSID clsid;
 
-      if (FAILED(::CLSIDFromProgID(argv[i], &guid))) {
+      if (FAILED(::CLSIDFromProgID(argv[i], &clsid))) {
         Usage(argv[0], L"Invalid ProgID");
         return false;
       }
 
-      gClsid.emplace(guid);
+      gClsid.emplace(clsid);
 
-      if (!::StringFromGUID2(guid, gStrClsid,
+      if (!::StringFromGUID2(clsid, gStrClsid,
                              static_cast<int>(ArrayLength(gStrClsid)))) {
+        Usage(argv[0], L"Failed converting CLSID to string");
         return false;
       }
 
@@ -116,6 +118,7 @@ static bool ParseArgv(const int argc, wchar_t *argv[]) {
   }
 
   if (!gClsid) {
+    Usage(argv[0], L"You must provide either a CLSID or a ProgID.");
     return false;
   }
 
@@ -310,7 +313,7 @@ static bool HasDllSurrogate(const wchar_t *aStrClsid) {
   if (gVerbose) {
     std::wstring strSurrogate;
     if (surrogate[0]) {
-      strSurrogate += L"\"";
+      strSurrogate = L"\"";
       strSurrogate += surrogate;
       strSurrogate += L"\"";
     } else {
@@ -420,7 +423,7 @@ ComClassThreadInfo ComClassThreadInfo::CheckObjectCapabilities(
   IUnknownPtr punk;
   HRESULT hr =
       ::CoCreateInstance(aClsid, nullptr, CLSCTX_INPROC_SERVER, IID_IUnknown,
-                         reinterpret_cast<void **>(&punk));
+                         reinterpret_cast<void**>(&punk));
   if (FAILED(hr)) {
     if (gVerbose) {
       wprintf_s(L"Failed with HRESULT 0x%08lX.\n", hr);
@@ -438,8 +441,7 @@ ComClassThreadInfo ComClassThreadInfo::CheckObjectCapabilities(
   }
 
   IUnknownPtr agile;
-  hr =
-      punk->QueryInterface(IID_IAgileObject, reinterpret_cast<void **>(&agile));
+  hr = punk->QueryInterface(IID_IAgileObject, reinterpret_cast<void**>(&agile));
   if (SUCCEEDED(hr)) {
     if (gVerbose) {
       wprintf_s(L"Found.\n");
@@ -514,6 +516,10 @@ ComClassThreadInfo ComClassThreadInfo::CheckObjectCapabilities(
 }
 
 static int CheckProxyForInterface(const wchar_t* aStrIid) {
+  if (gVerbose) {
+    wprintf_s(L"Checking interface's proxy/stub class...\n");
+  }
+
   std::wstring subKeyProxyStubClsid(L"Interface\\");
   subKeyProxyStubClsid += aStrIid;
   subKeyProxyStubClsid += L"\\ProxyStubClsid32";
@@ -528,16 +534,24 @@ static int CheckProxyForInterface(const wchar_t* aStrIid) {
     return 1;
   }
 
+  CLSID proxyStubClsid;
+  if (FAILED(::CLSIDFromString(proxyStubClsidBuf, &proxyStubClsid))) {
+    fwprintf_s(stderr, L"Could not parse proxy/stub CLSID.\n");
+    return 1;
+  }
+
+  if (gVerbose) {
+    wchar_t strProxyStubClsid[kGuidLenWithBracesInclNul] = {};
+    if (::StringFromGUID2(proxyStubClsid, strProxyStubClsid,
+                          kGuidLenWithBracesInclNul)) {
+      wprintf_s(L"CLSID for proxy/stub: %s\n", strProxyStubClsid);
+    }
+  }
+
   std::variant<ComClassThreadInfo, LSTATUS> proxyModel =
       GetClassThreadingModel(proxyStubClsidBuf);
   if (std::holds_alternative<LSTATUS>(proxyModel)) {
     fwprintf_s(stderr, L"Could not resolve proxy/stub threading model.\n");
-    return 1;
-  }
-
-  CLSID proxyStubClsid;
-  if (FAILED(::CLSIDFromString(proxyStubClsidBuf, &proxyStubClsid))) {
-    fwprintf_s(stderr, L"Could not parse proxy/stub CLSID.\n");
     return 1;
   }
 
