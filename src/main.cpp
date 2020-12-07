@@ -14,8 +14,8 @@
 #include <objbase.h>
 #include <windows.h>
 
-#pragma comment(lib, "advapi32.lib")
-#pragma comment(lib, "ole32.lib")
+
+_COM_SMARTPTR_TYPEDEF(IAgileObject, IID_IAgileObject);
 
 template <typename T, size_t N>
 static inline constexpr size_t ArrayLength(T (&aArr)[N]) {
@@ -427,9 +427,7 @@ ComClassThreadInfo ComClassThreadInfo::CheckObjectCapabilities(
   }
 
   IUnknownPtr punk;
-  HRESULT hr =
-      ::CoCreateInstance(aClsid, nullptr, CLSCTX_INPROC_SERVER, IID_IUnknown,
-                         reinterpret_cast<void**>(&punk));
+  HRESULT hr = punk.CreateInstance(aClsid, nullptr, CLSCTX_INPROC_SERVER);
   if (FAILED(hr)) {
     if (gVerbose) {
       wprintf_s(L"Failed with HRESULT 0x%08lX.\n", hr);
@@ -446,8 +444,8 @@ ComClassThreadInfo ComClassThreadInfo::CheckObjectCapabilities(
     wprintf_s(L"Querying for IAgileObject... ");
   }
 
-  IUnknownPtr agile;
-  hr = punk->QueryInterface(IID_IAgileObject, reinterpret_cast<void**>(&agile));
+  IAgileObjectPtr agile;
+  hr = punk.QueryInterface(IID_IAgileObject, &agile);
   if (SUCCEEDED(hr)) {
     if (gVerbose) {
       wprintf_s(L"Found.\n");
@@ -476,7 +474,7 @@ ComClassThreadInfo ComClassThreadInfo::CheckObjectCapabilities(
 
   // Check for the free-threaded marshaler
   IMarshalPtr marshal;
-  hr = punk->QueryInterface(IID_IMarshal, reinterpret_cast<void **>(&marshal));
+  hr = punk.QueryInterface(IID_IMarshal, &marshal);
   if (FAILED(hr)) {
     if (gVerbose) {
       if (hr == E_NOINTERFACE) {
