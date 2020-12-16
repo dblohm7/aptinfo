@@ -365,7 +365,7 @@ static std::variant<ComClassThreadInfo, LSTATUS> GetClassThreadingModel(
       return result;
     }
 
-    // The class *is* registred, just missing its ThreadingModel. Close the key
+    // The class *is* registered, just missing its ThreadingModel. Close the key
     // and fall-through for additional processing.
     ::RegCloseKey(regKeyInprocServer);
   } else if (result != ERROR_SUCCESS) {
