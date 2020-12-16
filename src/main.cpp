@@ -353,11 +353,28 @@ static std::variant<ComClassThreadInfo, LSTATUS> GetClassThreadingModel(
   LSTATUS result = ::RegGetValueW(HKEY_CLASSES_ROOT, subKeyInprocServer.c_str(),
                                   L"ThreadingModel", RRF_RT_REG_SZ, nullptr,
                                   threadingModelBuf, &numBytes);
-  if (result != ERROR_SUCCESS) {
+  if (result == ERROR_FILE_NOT_FOUND) {
+    // Check if the subkey exists, at least. If not, the class is not
+    // registered at all. If it is registered, then we're just missing the
+    // ThreadingModel registry value.
+    HKEY regKeyInprocServer;
+    LSTATUS subkeyOpened =
+        ::RegOpenKeyEx(HKEY_CLASSES_ROOT, subKeyInprocServer.c_str(), 0,
+                       KEY_READ, &regKeyInprocServer);
+    if (subkeyOpened != ERROR_SUCCESS) {
+      return result;
+    }
+
+    // The class *is* registred, just missing its ThreadingModel. Close the key
+    // and fall-through for additional processing.
+    ::RegCloseKey(regKeyInprocServer);
+  } else if (result != ERROR_SUCCESS) {
     return result;
   }
 
-  if (!_wcsicmp(threadingModelBuf, L"Apartment")) {
+  // Empty or non-existent ThreadingModel implies STA.
+  if (result == ERROR_FILE_NOT_FOUND || threadingModelBuf[0] == 0 ||
+      !_wcsicmp(threadingModelBuf, L"Apartment")) {
     return ComClassThreadInfo{ThreadingModel::STA, Provenance::Registry};
   }
 
