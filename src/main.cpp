@@ -372,6 +372,23 @@ static std::variant<ComClassThreadInfo, LSTATUS> GetClassThreadingModel(
     return result;
   }
 
+  if (gVerbose) {
+    wchar_t serverDllPath[MAX_PATH + 1] = {};
+    numBytes = sizeof(serverDllPath) - sizeof(wchar_t);
+    // This can be either REG_SZ or REG_EXPAND_SZ, but Win7 doesn't like OR'd
+    // flags, so we're just passing RRF_RT_ANY and hoping for the best...
+    LSTATUS pathResult = ::RegGetValueW(HKEY_CLASSES_ROOT,
+                                        subKeyInprocServer.c_str(),
+                                        nullptr, RRF_RT_ANY,
+                                        nullptr, serverDllPath, &numBytes);
+    if (pathResult == ERROR_SUCCESS) {
+      wprintf_s(L"Path to server DLL: \"%s\"\n", serverDllPath);
+    } else {
+      wprintf_s(L"Failed to retrieve path to server DLL, code %ld!\n",
+                pathResult);
+    }
+  }
+
   // Empty or non-existent ThreadingModel implies STA.
   if (result == ERROR_FILE_NOT_FOUND || threadingModelBuf[0] == 0 ||
       !_wcsicmp(threadingModelBuf, L"Apartment")) {
@@ -607,7 +624,7 @@ int wmain(int argc, wchar_t* argv[]) {
                               .GetDescription(ClassType::Server);
     wprintf_s(L"When instantiating in-process (via CLSCTX_INPROC_SERVER):\n%s",
               output.c_str());
-    if (!HasDllSurrogate(gStrClsid)) {
+    if (!HasDllSurrogate(gStrClsid) && !gIid.has_value()) {
       return 0;
     }
 
