@@ -658,14 +658,45 @@ int wmain(int argc, wchar_t *argv[]) {
   result = ::RegOpenKeyExW(HKEY_CLASSES_ROOT, subKeyLocalServer.c_str(), 0,
                            KEY_READ, &regKeyLocalServer);
   if (result == ERROR_FILE_NOT_FOUND) {
-    fwprintf_s(stderr, L"CLSID is not a registered local server.\n");
-    return 1;
+    fwprintf_s(stderr,
+               L"CLSID is not a persistently-registered local server.\n");
+    // Try querying for a class object.
+    // We need to enter an apartment before calling CoGetClassObject.
+    if (gVerbose) {
+      wprintf_s(L"Entering apartment...\n");
+    }
+
+    Apartment apt(ThreadingModel::MTA);
+    if (!apt) {
+      if (gVerbose) {
+        wprintf_s(L"Failed with HRESULT 0x%08lX.\n", apt.GetHResult());
+      }
+
+      fwprintf_s(stderr, L"WARNING: Could not enter a test apartment. Results "
+                         L"might be incomplete!\n");
+      return 1;
+    }
+
+    if (gVerbose) {
+      wprintf_s(L"Attempting to resolve via CoGetClassObject...\n");
+    }
+
+    IClassFactoryPtr classFactory;
+    HRESULT hr = ::CoGetClassObject(
+        gClsid.value(), CLSCTX_LOCAL_SERVER, nullptr, IID_IClassFactory,
+        reinterpret_cast<void **>(
+            static_cast<IClassFactory **>(&classFactory)));
+    if (FAILED(hr)) {
+      fwprintf_s(stderr,
+                 L"CLSID is not a temporarily-registered local server.\n");
+      return 1;
+    }
   } else if (result != ERROR_SUCCESS) {
     fwprintf_s(stderr, L"LocalServer32 query failed with code %ld.\n", result);
     return 1;
+  } else {
+    ::RegCloseKey(regKeyLocalServer);
   }
-
-  ::RegCloseKey(regKeyLocalServer);
 
   wprintf_s(L"When instantiating out-of-process (via CLSCTX_LOCAL_SERVER):\n");
 
