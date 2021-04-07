@@ -266,8 +266,8 @@ ComClassThreadInfo::GetDescription(const ClassType aClassType) const {
 
   result += L"has different threading models depending on the application's "
             L"supported OS version.\n\n";
-  result += L"For applications indicating compatibility with Windows 7,\nthe "
-            L"threading model is ";
+  result += L"For applications indicating compatibility with Windows 7 or "
+            L"older,\nthe threading model is ";
   result += GetThreadingModelDescription(mThreadingModel7);
   result += L"Provenance: ";
   result += GetProvenanceDescription(mProvenance7);
@@ -448,8 +448,8 @@ ComClassThreadInfo ComClassThreadInfo::CheckObjectCapabilities(
       wprintf_s(L"Failed with HRESULT 0x%08lX.\n", apt.GetHResult());
     }
 
-    fwprintf_s(stderr, L"WARNING: Could not enter a test apartment. Results "
-                       L"might be incomplete!\n");
+    wprintf_s(L"WARNING: Could not enter a test apartment. Results might be "
+              L"incomplete!\n");
     return *this;
   }
 
@@ -464,8 +464,8 @@ ComClassThreadInfo ComClassThreadInfo::CheckObjectCapabilities(
       wprintf_s(L"Failed with HRESULT 0x%08lX.\n", hr);
     }
 
-    fwprintf_s(stderr, L"WARNING: Could not create a test instance. Results "
-                       L"might be incomplete!\n");
+    wprintf_s(L"WARNING: Could not create a test instance. Results might be "
+              L"incomplete!\n");
     return *this;
   } else if (gVerbose) {
     wprintf_s(L"OK.\n");
@@ -494,8 +494,8 @@ ComClassThreadInfo ComClassThreadInfo::CheckObjectCapabilities(
 
   // We need an IID to do any further checks
   if (!aOptIid.has_value()) {
-    fwprintf_s(stderr, L"WARNING: IID required to query for free-threaded "
-                       L"marshaler.\n\tResults might be incomplete!\n");
+    wprintf_s(L"WARNING: IID required to query for free-threaded "
+              L"marshaler.\n\tResults might be incomplete!\n");
     return ComClassThreadInfo{thdModel7, prov7, thdModel8, prov8};
   }
 
@@ -660,8 +660,8 @@ int wmain(int argc, wchar_t *argv[]) {
   if (result == ERROR_FILE_NOT_FOUND) {
     fwprintf_s(stderr,
                L"CLSID is not a persistently-registered local server.\n");
-    // Try querying for a class object.
-    // We need to enter an apartment before calling CoGetClassObject.
+    // Try querying for a class object that might have been registered at
+    // runtime. We need to enter an apartment before calling CoGetClassObject.
     if (gVerbose) {
       wprintf_s(L"Entering apartment...\n");
     }
@@ -672,13 +672,13 @@ int wmain(int argc, wchar_t *argv[]) {
         wprintf_s(L"Failed with HRESULT 0x%08lX.\n", apt.GetHResult());
       }
 
-      fwprintf_s(stderr, L"WARNING: Could not enter a test apartment. Results "
-                         L"might be incomplete!\n");
+      wprintf_s(L"WARNING: Could not enter a test apartment. Results might be "
+                L"incomplete!\n");
       return 1;
     }
 
     if (gVerbose) {
-      wprintf_s(L"Attempting to resolve via CoGetClassObject...\n");
+      wprintf_s(L"Attempting to resolve via CoGetClassObject... ");
     }
 
     IClassFactoryPtr classFactory;
@@ -687,9 +687,17 @@ int wmain(int argc, wchar_t *argv[]) {
         reinterpret_cast<void **>(
             static_cast<IClassFactory **>(&classFactory)));
     if (FAILED(hr)) {
+      if (gVerbose) {
+        wprintf_s(L"\nFailed with HRESULT 0x%08lX.\n", hr);
+      }
+
       fwprintf_s(stderr,
                  L"CLSID is not a temporarily-registered local server.\n");
       return 1;
+    }
+
+    if (gVerbose) {
+      wprintf_s(L"OK.\n");
     }
   } else if (result != ERROR_SUCCESS) {
     fwprintf_s(stderr, L"LocalServer32 query failed with code %ld.\n", result);
