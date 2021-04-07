@@ -614,7 +614,7 @@ int wmain(int argc, wchar_t *argv[]) {
                               .GetDescription(ClassType::Server);
     wprintf_s(L"When instantiating in-process (via CLSCTX_INPROC_SERVER):\n%s",
               output.c_str());
-    if (!HasDllSurrogate(gStrClsid) && !gIid.has_value()) {
+    if (!HasDllSurrogate(gStrClsid)) {
       return 0;
     }
 
