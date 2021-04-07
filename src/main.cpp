@@ -614,7 +614,7 @@ int wmain(int argc, wchar_t *argv[]) {
                               .GetDescription(ClassType::Server);
     wprintf_s(L"When instantiating in-process (via CLSCTX_INPROC_SERVER):\n%s",
               output.c_str());
-    if (!HasDllSurrogate(gStrClsid) && !gIid.has_value()) {
+    if (!HasDllSurrogate(gStrClsid)) {
       return 0;
     }
 
@@ -632,7 +632,8 @@ int wmain(int argc, wchar_t *argv[]) {
       return 0;
     }
 
-    fwprintf_s(stderr, L"An IID must be provided to proceed any further.\n");
+    wprintf_s(L"WARNING: IID required to proceed any further.\n\tResults will "
+              L"be incomplete!\n");
     return 0;
   }
 
@@ -672,8 +673,8 @@ int wmain(int argc, wchar_t *argv[]) {
         wprintf_s(L"Failed with HRESULT 0x%08lX.\n", apt.GetHResult());
       }
 
-      wprintf_s(L"WARNING: Could not enter a test apartment. Results might be "
-                L"incomplete!\n");
+      fwprintf_s(stderr, L"WARNING: Could not enter a test apartment. Results "
+                         L"might be incomplete!\n");
       return 1;
     }
 
