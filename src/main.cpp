@@ -6,6 +6,7 @@
 
 #include <optional>
 #include <string>
+#include <string_view>
 #include <variant>
 
 #include <comdef.h>
@@ -13,6 +14,8 @@
 
 #include <objbase.h>
 #include <windows.h>
+
+using namespace ::std::literals::string_view_literals;
 
 _COM_SMARTPTR_TYPEDEF(IAgileObject, IID_IAgileObject);
 
@@ -184,7 +187,8 @@ public:
 private:
   static std::wstring
   GetThreadingModelDescription(const ThreadingModel aThdModel);
-  static const wchar_t *GetProvenanceDescription(const Provenance aProvenance);
+  static const std::wstring_view
+  GetProvenanceDescription(const Provenance aProvenance);
 
 private:
   const ThreadingModel mThreadingModel7;
@@ -199,33 +203,35 @@ std::wstring ComClassThreadInfo::GetThreadingModelDescription(
 
   switch (aThdModel) {
   case ThreadingModel::STA:
-    result = L"Single-threaded";
+    result = L"Single-threaded"sv;
     if (gDescriptive) {
-      result += L":\n\tProxying is required to access from any other apartment";
+      result +=
+          L":\n\tProxying is required to access from any other apartment"sv;
     }
     break;
   case ThreadingModel::MTA:
-    result = L"Multi-threaded";
+    result = L"Multi-threaded"sv;
     if (gDescriptive) {
-      result += L":\n\tProxying is required to access from any single-threaded "
-                L"apartment";
+      result +=
+          L":\n\tProxying is required to access from any single-threaded "sv
+          L"apartment"sv;
     }
 
     break;
   case ThreadingModel::Both:
-    result = L"Both";
+    result = L"Both"sv;
     if (gDescriptive) {
-      result += L":\n\tEither single-threaded or multi-threaded, but "
-                L"mutually-exclusive";
+      result += L":\n\tEither single-threaded or multi-threaded, but "sv
+                L"mutually-exclusive"sv;
     }
 
     break;
   case ThreadingModel::Neutral:
-    result = L"Thread-neutral";
+    result = L"Thread-neutral"sv;
     if (gDescriptive) {
       result +=
-          L":\n\tThis object may be invoked by any thread residing in any "
-          L"apartment";
+          L":\n\tThis object may be invoked by any thread residing in any "sv
+          L"apartment"sv;
     }
 
     break;
@@ -233,48 +239,50 @@ std::wstring ComClassThreadInfo::GetThreadingModelDescription(
     return result;
   };
 
-  result += L".\n";
+  result += L".\n"sv;
   return result;
 }
 
-const wchar_t *
+const std::wstring_view
 ComClassThreadInfo::GetProvenanceDescription(const Provenance aProvenance) {
   switch (aProvenance) {
   case Provenance::Registry:
-    return L"System registry.\n";
+    return L"System registry.\n"sv;
   case Provenance::FreeThreadedMarshaler:
-    return L"Free-threaded marshaler.\n";
+    return L"Free-threaded marshaler.\n"sv;
   case Provenance::Manifest:
-    return L"Manifest.\n";
+    return L"Manifest.\n"sv;
   case Provenance::AgileObject:
-    return L"IAgileObject.\n";
+    return L"IAgileObject.\n"sv;
   default:
-    return nullptr;
+    return L"<ERROR: UNDEFINED PROVENANCE>"sv;
   }
 }
 
 std::wstring
 ComClassThreadInfo::GetDescription(const ClassType aClassType) const {
-  std::wstring result(aClassType == ClassType::Server ? L"Server " : L"Proxy ");
+  std::wstring result(aClassType == ClassType::Server ? L"Server "sv
+                                                      : L"Proxy "sv);
   if (mThreadingModel7 == mThreadingModel8) {
-    result += L"threading model: ";
+    result += L"threading model: "sv;
     result += GetThreadingModelDescription(mThreadingModel7);
-    result += L"Provenance: ";
+    result += L"Provenance: "sv;
     result += GetProvenanceDescription(mProvenance7);
     return result;
   }
 
-  result += L"has different threading models depending on the application's "
-            L"supported OS version.\n\n";
-  result += L"For applications indicating compatibility with Windows 7 or "
-            L"older,\nthe threading model is ";
+  result += L"has different threading models depending on the application's "sv
+            L"supported OS version.\n\n"sv;
+  result += L"For applications indicating compatibility with Windows 7 or "sv
+            L"older,\nthe threading model is "sv;
   result += GetThreadingModelDescription(mThreadingModel7);
-  result += L"Provenance: ";
+  result += L"Provenance: "sv;
   result += GetProvenanceDescription(mProvenance7);
-  result += L"\n\nFor applications indicating compatibility with Windows 8 or "
-            L"newer,\nthe threading model is ";
+  result +=
+      L"\n\nFor applications indicating compatibility with Windows 8 or "sv
+      L"newer,\nthe threading model is "sv;
   result += GetThreadingModelDescription(mThreadingModel8);
-  result += L"Provenance: ";
+  result += L"Provenance: "sv;
   result += GetProvenanceDescription(mProvenance8);
   return result;
 }
@@ -284,7 +292,7 @@ static bool HasDllSurrogate(const wchar_t *aStrClsid) {
     wprintf_s(L"Checking for DLL surrogate... ");
   }
 
-  std::wstring subKeyClsid(L"CLSID\\");
+  std::wstring subKeyClsid(L"CLSID\\"sv);
   subKeyClsid += aStrClsid;
 
   wchar_t appIdBuf[kGuidLenWithBracesInclNul] = {};
@@ -300,7 +308,7 @@ static bool HasDllSurrogate(const wchar_t *aStrClsid) {
     return false;
   }
 
-  std::wstring subKeyAppid(L"AppID\\");
+  std::wstring subKeyAppid(L"AppID\\"sv);
   subKeyAppid += appIdBuf;
 
   wchar_t surrogate[MAX_PATH + 1] = {};
@@ -319,11 +327,11 @@ static bool HasDllSurrogate(const wchar_t *aStrClsid) {
   if (gVerbose) {
     std::wstring strSurrogate;
     if (surrogate[0]) {
-      strSurrogate = L"\"";
+      strSurrogate = L"\""sv;
       strSurrogate += surrogate;
-      strSurrogate += L"\"";
+      strSurrogate += L"\""sv;
     } else {
-      strSurrogate = L"System default (dllhost.exe)";
+      strSurrogate = L"System default (dllhost.exe)"sv;
     }
 
     wprintf_s(L"%s.\n", strSurrogate.c_str());
@@ -334,11 +342,11 @@ static bool HasDllSurrogate(const wchar_t *aStrClsid) {
 
 static std::variant<ComClassThreadInfo, LSTATUS>
 GetClassThreadingModel(const wchar_t *aStrClsid) {
-  std::wstring subKeyClsid(L"CLSID\\");
+  std::wstring subKeyClsid(L"CLSID\\"sv);
   subKeyClsid += aStrClsid;
 
   std::wstring subKeyInprocServer(subKeyClsid);
-  subKeyInprocServer += L"\\InprocServer32";
+  subKeyInprocServer += L"\\InprocServer32"sv;
 
   wchar_t threadingModelBuf[kThreadingModelBufCharLen] = {};
   DWORD numBytes = sizeof(threadingModelBuf);
@@ -555,9 +563,9 @@ static int CheckProxyForInterface(const wchar_t *aStrIid) {
     wprintf_s(L"Checking interface's proxy/stub class...\n");
   }
 
-  std::wstring subKeyProxyStubClsid(L"Interface\\");
+  std::wstring subKeyProxyStubClsid(L"Interface\\"sv);
   subKeyProxyStubClsid += aStrIid;
-  subKeyProxyStubClsid += L"\\ProxyStubClsid32";
+  subKeyProxyStubClsid += L"\\ProxyStubClsid32"sv;
 
   wchar_t proxyStubClsidBuf[kGuidLenWithBracesInclNul] = {};
   DWORD numBytes = sizeof(proxyStubClsidBuf);
@@ -651,19 +659,18 @@ int wmain(int argc, wchar_t *argv[]) {
     wprintf_s(L"Attempting to resolve as a local server...\n");
   }
 
-  std::wstring subKeyLocalServer(L"CLSID\\");
+  std::wstring subKeyLocalServer(L"CLSID\\"sv);
   subKeyLocalServer += gStrClsid;
-  subKeyLocalServer += L"\\LocalServer32";
+  subKeyLocalServer += L"\\LocalServer32"sv;
 
   HKEY regKeyLocalServer;
   result = ::RegOpenKeyExW(HKEY_CLASSES_ROOT, subKeyLocalServer.c_str(), 0,
                            KEY_READ, &regKeyLocalServer);
   if (result == ERROR_FILE_NOT_FOUND) {
-    fwprintf_s(stderr,
-               L"CLSID is not a persistently-registered local server.\n");
     // Try querying for a class object that might have been registered at
     // runtime. We need to enter an apartment before calling CoGetClassObject.
     if (gVerbose) {
+      wprintf_s(L"CLSID is not a permanently-registered local server.\n");
       wprintf_s(L"Entering apartment...\n");
     }
 
@@ -692,8 +699,7 @@ int wmain(int argc, wchar_t *argv[]) {
         wprintf_s(L"\nFailed with HRESULT 0x%08lX.\n", hr);
       }
 
-      fwprintf_s(stderr,
-                 L"CLSID is not a temporarily-registered local server.\n");
+      fwprintf_s(stderr, L"CLSID is not a registered local server.\n");
       return 1;
     }
 
