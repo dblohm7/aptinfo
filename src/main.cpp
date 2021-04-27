@@ -7,6 +7,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <variant>
 
 #include <comdef.h>
@@ -22,6 +23,49 @@ _COM_SMARTPTR_TYPEDEF(IAgileObject, IID_IAgileObject);
 template <typename T, size_t N>
 static inline constexpr size_t ArrayLength(T (&aArr)[N]) {
   return N;
+}
+
+template <typename ExitFnT>
+class ScopeExit final
+{
+public:
+  explicit ScopeExit(ExitFnT &&aExitFn)
+    : mExitFn(std::forward<ExitFnT>(aExitFn))
+    , mExecute(true)
+  {
+  }
+
+  ScopeExit(ScopeExit &&aRhs)
+    : mExitFn(std::move(aRhs))
+    , mExecute(aRhs.mExecute)
+  {
+    aRhs.release();
+  }
+
+  ~ScopeExit()
+  {
+    if (!mExecute) {
+      return;
+    }
+
+    mExitFn();
+  }
+
+  void release() { mExecute = false; }
+
+  ScopeExit(ScopeExit const &) = delete;
+  ScopeExit& operator=(ScopeExit const &) = delete;
+  ScopeExit& operator=(ScopeExit &&) = delete;
+
+private:
+  ExitFnT mExitFn;
+  bool mExecute;
+};
+
+template <typename ExitFnT>
+[[nodiscard]] ScopeExit<ExitFnT> MakeScopeExit(ExitFnT &&aExitFn)
+{
+  return ScopeExit<ExitFnT>(std::forward<ExitFnT>(aExitFn));
 }
 
 static constexpr int kGuidLenWithBracesInclNul = 39;
@@ -613,6 +657,13 @@ int wmain(int argc, wchar_t *argv[]) {
   if (!ParseArgv(argc, argv)) {
     return 1;
   }
+
+  auto printDoneOnExit = MakeScopeExit([]() {
+    if (gVerbose) {
+      // This just helps to make verbose output easier to read.
+      wprintf_s(L"Done.\n");
+    }
+  });
 
   std::variant<ComClassThreadInfo, LSTATUS> inprocModel =
       GetClassThreadingModel(gStrClsid);
