@@ -68,6 +68,22 @@ template <typename ExitFnT>
   return ScopeExit<ExitFnT>(std::forward<ExitFnT>(aExitFn));
 }
 
+static std::wstring_view BufToView(const wchar_t* aBuf,
+                                   const size_t aNumBytesInclNul)
+{
+  if (aNumBytesInclNul < (2 * sizeof(wchar_t))) {
+    return std::wstring_view();
+  }
+
+  return std::wstring_view(aBuf, ((aNumBytesInclNul + 1) / sizeof(wchar_t)) - 1);
+}
+
+template <size_t N>
+static std::wstring_view BufToView(const wchar_t (&aBuf)[N])
+{
+  return std::wstring_view(aBuf, N - 1);
+}
+
 static constexpr int kGuidLenWithBracesInclNul = 39;
 static constexpr int kGuidLenWithBracesExclNul = kGuidLenWithBracesInclNul - 1;
 static constexpr size_t kThreadingModelBufCharLen = ArrayLength(L"Apartment");
@@ -331,7 +347,7 @@ ComClassThreadInfo::GetDescription(const ClassType aClassType) const {
   return result;
 }
 
-static bool HasDllSurrogate(const wchar_t *aStrClsid) {
+static bool HasDllSurrogate(const std::wstring_view& aStrClsid) {
   if (gVerbose) {
     wprintf_s(L"Checking for DLL surrogate... ");
   }
@@ -352,8 +368,10 @@ static bool HasDllSurrogate(const wchar_t *aStrClsid) {
     return false;
   }
 
+  std::wstring_view appId(BufToView(appIdBuf, numBytes));
+
   std::wstring subKeyAppid(L"AppID\\"sv);
-  subKeyAppid += appIdBuf;
+  subKeyAppid += appId;
 
   wchar_t surrogate[MAX_PATH + 1] = {};
   numBytes = sizeof(surrogate);
@@ -385,7 +403,7 @@ static bool HasDllSurrogate(const wchar_t *aStrClsid) {
 }
 
 static std::variant<ComClassThreadInfo, LSTATUS>
-GetClassThreadingModel(const wchar_t *aStrClsid) {
+GetClassThreadingModel(const std::wstring_view& aStrClsid) {
   std::wstring subKeyClsid(L"CLSID\\"sv);
   subKeyClsid += aStrClsid;
 
@@ -602,7 +620,7 @@ ComClassThreadInfo ComClassThreadInfo::CheckObjectCapabilities(
   return ComClassThreadInfo{thdModel7, prov7, thdModel8, prov8};
 }
 
-static int CheckProxyForInterface(const wchar_t *aStrIid) {
+static int CheckProxyForInterface(const std::wstring_view& aStrIid) {
   if (gVerbose) {
     wprintf_s(L"Checking interface's proxy/stub class...\n");
   }
@@ -641,7 +659,7 @@ static int CheckProxyForInterface(const wchar_t *aStrIid) {
   }
 
   std::variant<ComClassThreadInfo, LSTATUS> proxyModel =
-      GetClassThreadingModel(proxyStubClsidBuf);
+      GetClassThreadingModel(BufToView(proxyStubClsidBuf, numBytes));
   if (std::holds_alternative<LSTATUS>(proxyModel)) {
     fwprintf_s(stderr, L"Could not resolve proxy/stub threading model.\n");
     return 1;
@@ -663,17 +681,19 @@ int wmain(int argc, wchar_t *argv[]) {
       // This just helps to make verbose output easier to read.
       wprintf_s(L"Done.\n");
     }
+
+    wprintf_s(L"\n");
   });
 
   std::variant<ComClassThreadInfo, LSTATUS> inprocModel =
-      GetClassThreadingModel(gStrClsid);
+      GetClassThreadingModel(BufToView(gStrClsid));
   if (std::holds_alternative<ComClassThreadInfo>(inprocModel)) {
     std::wstring output = std::get<ComClassThreadInfo>(inprocModel)
                               .CheckObjectCapabilities(gClsid.value(), gIid)
                               .GetDescription(ClassType::Server);
     wprintf_s(L"When instantiating in-process (via CLSCTX_INPROC_SERVER):\n%s",
               output.c_str());
-    if (!HasDllSurrogate(gStrClsid)) {
+    if (!HasDllSurrogate(BufToView(gStrClsid))) {
       return 0;
     }
 
@@ -687,7 +707,7 @@ int wmain(int argc, wchar_t *argv[]) {
 
     if (gIid.has_value()) {
       // Ignore return value since we already have some success
-      CheckProxyForInterface(gStrIid);
+      CheckProxyForInterface(BufToView(gStrIid));
       return 0;
     }
 
@@ -778,5 +798,5 @@ int wmain(int argc, wchar_t *argv[]) {
     return 1;
   }
 
-  return CheckProxyForInterface(gStrIid);
+  return CheckProxyForInterface(BufToView(gStrIid));
 }
