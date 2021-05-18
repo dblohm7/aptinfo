@@ -698,7 +698,7 @@ int wmain(int argc, wchar_t *argv[]) {
     }
 
     wprintf_s(
-        L"\nThis class may optionally be instantiated out-of-process\n\t(via "
+        L"This class may optionally be instantiated out-of-process\n\t(via "
         L"CLSCTX_LOCAL_SERVER):\n");
     if (gVerbose) {
       wprintf_s(L"In this case its threading model will be determined by the "
