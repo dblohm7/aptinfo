@@ -146,7 +146,7 @@ static bool ParseArgv(const int argc, wchar_t *argv[]) {
 
       if (!gClsid.has_value()) {
         if (FAILED(::CLSIDFromString(argv[i], &guid))) {
-          Usage(argv[0], L"Failed to parse CLSID");
+          Usage(argv[0], L"Failed to parse CLSID.");
           return false;
         }
 
@@ -154,7 +154,7 @@ static bool ParseArgv(const int argc, wchar_t *argv[]) {
         gClsid.emplace(guid);
       } else {
         if (FAILED(::IIDFromString(argv[i], &guid))) {
-          Usage(argv[0], L"Failed to parse IID");
+          Usage(argv[0], L"Failed to parse IID.");
           return false;
         }
 
@@ -166,7 +166,7 @@ static bool ParseArgv(const int argc, wchar_t *argv[]) {
       CLSID clsid;
 
       if (FAILED(::CLSIDFromProgID(argv[i], &clsid))) {
-        Usage(argv[0], L"Invalid ProgID");
+        Usage(argv[0], L"Invalid ProgID.");
         return false;
       }
 
@@ -174,7 +174,7 @@ static bool ParseArgv(const int argc, wchar_t *argv[]) {
 
       if (!::StringFromGUID2(clsid, gStrClsid,
                              static_cast<int>(ArrayLength(gStrClsid)))) {
-        Usage(argv[0], L"Failed converting CLSID to string");
+        Usage(argv[0], L"Failed converting CLSID to string.");
         return false;
       }
 
@@ -188,13 +188,15 @@ static bool ParseArgv(const int argc, wchar_t *argv[]) {
   }
 
   if (gVerbose) {
-    wprintf_s(L"Using CLSID %s\n", gStrClsid);
+    wprintf_s(L"Using CLSID %s", gStrClsid);
     if (gProgID) {
-      wprintf_s(L"Obtained from ProgID \"%s\"\n", gProgID);
+      wprintf_s(L" obtained from ProgID \"%s\"", gProgID);
     }
 
+    wprintf_s(L".\n");
+
     if (gIid) {
-      wprintf_s(L"Using IID %s\n", gStrIid);
+      wprintf_s(L"Using IID %s.\n", gStrIid);
     }
   }
 
