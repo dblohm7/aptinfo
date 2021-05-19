@@ -370,7 +370,7 @@ static bool HasDllSurrogate(const std::wstring_view& aStrClsid) {
     return false;
   }
 
-  std::wstring_view appId(BufToView(appIdBuf, numBytes));
+  const std::wstring_view appId(BufToView(appIdBuf, numBytes));
 
   std::wstring subKeyAppid(L"AppID\\"sv);
   subKeyAppid += appId;
@@ -406,10 +406,8 @@ static bool HasDllSurrogate(const std::wstring_view& aStrClsid) {
 
 static std::variant<ComClassThreadInfo, LSTATUS>
 GetClassThreadingModel(const std::wstring_view& aStrClsid) {
-  std::wstring subKeyClsid(L"CLSID\\"sv);
-  subKeyClsid += aStrClsid;
-
-  std::wstring subKeyInprocServer(subKeyClsid);
+  std::wstring subKeyInprocServer(L"CLSID\\"sv);
+  subKeyInprocServer += aStrClsid;
   subKeyInprocServer += L"\\InprocServer32"sv;
 
   wchar_t threadingModelBuf[kThreadingModelBufCharLen] = {};
@@ -436,18 +434,18 @@ GetClassThreadingModel(const std::wstring_view& aStrClsid) {
     return result;
   }
 
-  if (gVerbose) {
-    wchar_t serverDllPath[MAX_PATH + 1] = {};
-    numBytes = sizeof(serverDllPath) - sizeof(wchar_t);
-    LSTATUS pathResult =
-        ::RegGetValueW(HKEY_CLASSES_ROOT, subKeyInprocServer.c_str(), nullptr,
-                       RRF_RT_REG_SZ, nullptr, serverDllPath, &numBytes);
-    if (pathResult == ERROR_SUCCESS) {
+  wchar_t serverDllPath[MAX_PATH + 1] = {};
+  numBytes = sizeof(serverDllPath);
+  LSTATUS pathResult =
+      ::RegGetValueW(HKEY_CLASSES_ROOT, subKeyInprocServer.c_str(), nullptr,
+                     RRF_RT_REG_SZ, nullptr, serverDllPath, &numBytes);
+  if (pathResult == ERROR_SUCCESS) {
+    if (gVerbose) {
       wprintf_s(L"Path to server DLL: \"%s\"\n", serverDllPath);
-    } else {
-      wprintf_s(L"Failed to retrieve path to server DLL, code %ld!\n",
-                pathResult);
     }
+  } else {
+    wprintf_s(L"WARNING: Failed to retrieve path to server DLL, code %ld!\n",
+              pathResult);
   }
 
   // Empty or non-existent ThreadingModel implies STA.
@@ -687,15 +685,17 @@ int wmain(int argc, wchar_t *argv[]) {
     wprintf_s(L"\n");
   });
 
+  const std::wstring_view strClsid(BufToView(gStrClsid));
+
   std::variant<ComClassThreadInfo, LSTATUS> inprocModel =
-      GetClassThreadingModel(BufToView(gStrClsid));
+      GetClassThreadingModel(strClsid);
   if (std::holds_alternative<ComClassThreadInfo>(inprocModel)) {
     std::wstring output = std::get<ComClassThreadInfo>(inprocModel)
                               .CheckObjectCapabilities(gClsid.value(), gIid)
                               .GetDescription(ClassType::Server);
     wprintf_s(L"When instantiating in-process (via CLSCTX_INPROC_SERVER):\n%s",
               output.c_str());
-    if (!HasDllSurrogate(BufToView(gStrClsid))) {
+    if (!HasDllSurrogate(strClsid)) {
       return 0;
     }
 
@@ -733,7 +733,7 @@ int wmain(int argc, wchar_t *argv[]) {
   }
 
   std::wstring subKeyLocalServer(L"CLSID\\"sv);
-  subKeyLocalServer += gStrClsid;
+  subKeyLocalServer += strClsid;
   subKeyLocalServer += L"\\LocalServer32"sv;
 
   HKEY regKeyLocalServer;
