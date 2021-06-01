@@ -25,25 +25,17 @@ static inline constexpr size_t ArrayLength(T (&aArr)[N]) {
   return N;
 }
 
-template <typename ExitFnT>
-class ScopeExit final
-{
+template <typename ExitFnT> class ScopeExit final {
 public:
   explicit ScopeExit(ExitFnT &&aExitFn)
-    : mExitFn(std::forward<ExitFnT>(aExitFn))
-    , mExecute(true)
-  {
-  }
+      : mExitFn(std::forward<ExitFnT>(aExitFn)), mExecute(true) {}
 
   ScopeExit(ScopeExit &&aRhs)
-    : mExitFn(std::move(aRhs))
-    , mExecute(aRhs.mExecute)
-  {
+      : mExitFn(std::move(aRhs)), mExecute(aRhs.mExecute) {
     aRhs.release();
   }
 
-  ~ScopeExit()
-  {
+  ~ScopeExit() {
     if (!mExecute) {
       return;
     }
@@ -54,8 +46,8 @@ public:
   void release() { mExecute = false; }
 
   ScopeExit(ScopeExit const &) = delete;
-  ScopeExit& operator=(ScopeExit const &) = delete;
-  ScopeExit& operator=(ScopeExit &&) = delete;
+  ScopeExit &operator=(ScopeExit const &) = delete;
+  ScopeExit &operator=(ScopeExit &&) = delete;
 
 private:
   ExitFnT mExitFn;
@@ -63,24 +55,22 @@ private:
 };
 
 template <typename ExitFnT>
-[[nodiscard]] ScopeExit<ExitFnT> MakeScopeExit(ExitFnT &&aExitFn)
-{
+[[nodiscard]] ScopeExit<ExitFnT> MakeScopeExit(ExitFnT &&aExitFn) {
   return ScopeExit<ExitFnT>(std::forward<ExitFnT>(aExitFn));
 }
 
-static std::wstring_view BufToView(const wchar_t* aBuf,
-                                   const size_t aNumBytesInclNul)
-{
+static std::wstring_view BufToView(const wchar_t *aBuf,
+                                   const size_t aNumBytesInclNul) {
   if (aNumBytesInclNul < (2 * sizeof(wchar_t))) {
     return std::wstring_view();
   }
 
-  return std::wstring_view(aBuf, ((aNumBytesInclNul + 1) / sizeof(wchar_t)) - 1);
+  return std::wstring_view(aBuf,
+                           ((aNumBytesInclNul + 1) / sizeof(wchar_t)) - 1);
 }
 
 template <size_t N>
-static std::wstring_view BufToView(const wchar_t (&aBuf)[N])
-{
+static std::wstring_view BufToView(const wchar_t (&aBuf)[N]) {
   return std::wstring_view(aBuf, N - 1);
 }
 
@@ -239,7 +229,8 @@ public:
   std::wstring GetDescription(const ClassType aClassType) const;
 
   ComClassThreadInfo
-  CheckObjectCapabilities(REFCLSID, const std::optional<IID> &aOptIid) const;
+  CheckObjectCapabilities(REFCLSID aClsid,
+                          const std::optional<IID> &aOptIid) const;
 
   ComClassThreadInfo(const ComClassThreadInfo &) = default;
   ComClassThreadInfo(ComClassThreadInfo &&) = default;
@@ -349,7 +340,7 @@ ComClassThreadInfo::GetDescription(const ClassType aClassType) const {
   return result;
 }
 
-static bool HasDllSurrogate(const std::wstring_view& aStrClsid) {
+static bool HasDllSurrogate(const std::wstring_view &aStrClsid) {
   if (gVerbose) {
     wprintf_s(L"Checking for DLL surrogate... ");
   }
@@ -405,7 +396,7 @@ static bool HasDllSurrogate(const std::wstring_view& aStrClsid) {
 }
 
 static std::variant<ComClassThreadInfo, LSTATUS>
-GetClassThreadingModel(const std::wstring_view& aStrClsid) {
+GetClassThreadingModel(const std::wstring_view &aStrClsid) {
   std::wstring subKeyInprocServer(L"CLSID\\"sv);
   subKeyInprocServer += aStrClsid;
   subKeyInprocServer += L"\\InprocServer32"sv;
@@ -620,7 +611,7 @@ ComClassThreadInfo ComClassThreadInfo::CheckObjectCapabilities(
   return ComClassThreadInfo{thdModel7, prov7, thdModel8, prov8};
 }
 
-static int CheckProxyForInterface(const std::wstring_view& aStrIid) {
+static int CheckProxyForInterface(const std::wstring_view &aStrIid) {
   if (gVerbose) {
     wprintf_s(L"Checking interface's proxy/stub class...\n");
   }
