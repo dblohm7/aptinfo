@@ -3,4 +3,14 @@
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 .gitignore
-: foreach ../src/*.cpp |> cl -nologo -Zi -EHsc -MD -std:c++17 -experimental:external -external:env:INCLUDE -external:W0 -Wall -WX -wd4514 -wd4100 -wd4820 -wd4191 -wd5045 -D_WIN32_WINNT=0x0A00 -DNTDDI_VERSION=WDK_NTDDI_VERSION -DUNICODE -D_UNICODE -DWIN32_LEAN_AND_MEAN -I../include -c %f -FS -Fd%B.pdb -Fo%o |> %B.obj ^.*\.cache
+include_rules
+
+# The output after the caret is a regex to specify files to ignore
+
+# Build the PCH
+: &(INCLUDEDIR)/pch.cpp |> cl $(CLFLAGS) $(CXXFLAGS) $(DEFINES) $(WARNINGS) $(GLOBAL_INCLUDES) -I&(INCLUDEDIR) -c %f -Yc%B.h -Fp%o -Fo%O.obj -FS -Fd&(VOBJDIR)/$(BIN_NAME).pdb |> $(PCH_BASENAME).pch ^.*\.cache | $(PCH_BASENAME).obj
+
+# Now build the rest
+# Note that tup variants mirror &-variables when used in the dependency sections, but not in the command sections.
+# That's why we also have &-variables prefixed with 'V' that take that into account.
+: foreach &(SRCDIR)/*.cpp | $(PCH_BASENAME).pch |> cl $(CLFLAGS) $(CXXFLAGS) $(DEFINES) $(WARNINGS) $(GLOBAL_INCLUDES) -I&(INCLUDEDIR) -Yupch.h -Fp&(VOBJDIR)/$(PCH_BASENAME).pch -FIpch.h -c %f -FS -Fd&(VOBJDIR)/$(BIN_NAME).pdb -Fo%o |> %B.obj ^.*\.cache

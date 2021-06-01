@@ -4,4 +4,5 @@
 
 .gitignore
 include_rules
-: ../obj/*.obj | ../obj/*.pdb |> cl -nologo -Zi -MD %f $(IMPORT_LIBS) delayimp.lib -FS -Fd%O.pdb -Fe%o -link $(DELAYLOAD_DLLS) -manifestinput:../src/compatibility.manifest -manifest:embed |> $(BIN_NAME).exe | %O.pdb %O.ilk
+
+: &(OBJDIR)/*.obj | &(OBJDIR)/*.pdb |> cl $(CLFLAGS) %f $(IMPORT_LIBS) delayimp.lib -FS -Fd%O.pdb -Fe%o -link $(LINKFLAGS) $(DELAYLOAD_DLLS) -manifestinput:&(SRCDIR)/compatibility.manifest -manifest:embed |> $(BIN_NAME).$(BIN_EXTENSION) | $(LINK_EXTRA_OUTPUTS)
