@@ -101,8 +101,15 @@ static void Usage(const wchar_t *aArgv0, const wchar_t *aMsg = nullptr) {
     fwprintf_s(stderr, L"Error: %s\n\n", aMsg);
   }
 
-  fwprintf_s(stderr, L"Usage: %s [-d] [-v] <ProgID or CLSID> [IID]\n\n",
-             aArgv0);
+  const wchar_t* name = aArgv0;
+
+  wchar_t fname[_MAX_FNAME];
+  if (!_wsplitpath_s(aArgv0, nullptr, 0, nullptr, 0, fname, ArrayLength(fname),
+                     nullptr, 0)) {
+    name = fname;
+  }
+
+  fwprintf_s(stderr, L"Usage: %s [-d] [-v] <ProgID or CLSID> [IID]\n\n", name);
   fwprintf_s(stderr, L"Where:\n\n");
   fwprintf_s(stderr,
              L"\t-d\tDescriptive mode: include additional descriptive text in "
